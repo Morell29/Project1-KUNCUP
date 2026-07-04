@@ -33,7 +33,8 @@ interface CameraPreviewProps {
 }
 
 // ─── Konstanta ───────────────────────────────────────────────────────────────
-const CONFIRM_MS = 1500; // durasi tahan untuk konfirmasi (ms)
+const CONFIRM_MS         = 1500; // durasi tahan untuk konfirmasi default (ms)
+const CONFIRM_MS_FINGERS =  800; // durasi lebih singkat khusus hitung jari (ms)
 
 // ─── Canvas drawing helpers ──────────────────────────────────────────────────
 function drawLandmarkPoints(
@@ -263,7 +264,9 @@ export default function CameraPreview({
 
             if (detected) {
               if (!detectionStartRef.current) detectionStartRef.current = now;
-              const progress = Math.min(1, (now - detectionStartRef.current) / CONFIRM_MS);
+              // Hitung jari pakai durasi lebih singkat agar tidak terlalu melelahkan
+              const confirmDuration = task === "countFingers" ? CONFIRM_MS_FINGERS : CONFIRM_MS;
+              const progress = Math.min(1, (now - detectionStartRef.current) / confirmDuration);
               confirmProgressRef.current = progress;
 
               if (progress >= 1) {
@@ -323,16 +326,21 @@ export default function CameraPreview({
                 ctx.fillText(label, w / 2, 31);
               }
 
-              // Progress ring (bawah tengah)
+              // Progress ring — tengah canvas agar selalu terlihat penuh
               const progress = confirmProgressRef.current;
               if (progress > 0 && !justSuccessRef.current) {
                 const cx = w / 2;
-                const cy = h - 52;
-                const r  = 28;
+                const cy = h / 2;  // tengah vertikal
+                const r  = 36;     // sedikit lebih besar agar mudah dilihat
                 ctx.lineCap   = "round";
-                ctx.lineWidth = 7;
+                ctx.lineWidth = 8;
+                // Lingkaran backdrop semi-transparan
+                ctx.fillStyle = "rgba(0,0,0,0.35)";
+                ctx.beginPath();
+                ctx.arc(cx, cy, r + 10, 0, Math.PI * 2);
+                ctx.fill();
                 // Background ring
-                ctx.strokeStyle = "rgba(255,255,255,0.25)";
+                ctx.strokeStyle = "rgba(255,255,255,0.20)";
                 ctx.beginPath();
                 ctx.arc(cx, cy, r, 0, Math.PI * 2);
                 ctx.stroke();
@@ -343,7 +351,7 @@ export default function CameraPreview({
                 ctx.stroke();
                 // Persen di tengah ring
                 ctx.fillStyle = "white";
-                ctx.font = "bold 12px system-ui, sans-serif";
+                ctx.font = "bold 14px system-ui, sans-serif";
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
                 ctx.fillText(`${Math.round(progress * 100)}%`, cx, cy);
