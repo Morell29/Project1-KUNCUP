@@ -8,47 +8,73 @@ import type { NormalizedLandmark } from "@mediapipe/tasks-vision";
 // Manis: 13,14,15,16 (16 = ujung)
 // Kelingking: 17,18,19,20 (20 = ujung)
 
-function distance(a: NormalizedLandmark, b: NormalizedLandmark) {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
+/**
+ * Cek apakah jari (selain jempol) terangkat.
+ * Menggunakan koordinat Y: di MediaPipe, Y bertambah ke BAWAH.
+ * Jadi jari terangkat = tip.y < pip.y (ujung jari lebih tinggi dari sendi PIP).
+ */
 function isFingerExtended(
   landmarks: NormalizedLandmark[],
   tipIndex: number,
   pipIndex: number
-) {
-  const wrist = landmarks[0];
+): boolean {
   const tip = landmarks[tipIndex];
   const pip = landmarks[pipIndex];
-
-  // Jari terbuka jika ujung jari lebih jauh dari pergelangan
-  // dibanding sendi tengahnya
-  return distance(tip, wrist) > distance(pip, wrist);
+  return tip.y < pip.y;
 }
 
-function isThumbExtended(landmarks: NormalizedLandmark[]) {
-  const wrist = landmarks[0];
-  const thumbTip = landmarks[4];
-  const thumbMcp = landmarks[2];
+/**
+ * Cek apakah jempol terangkat, berdasarkan ARAH VEKTOR jempol.
+ *
+ * Masalah dengan pendekatan berbasis jarak:
+ *   - Ujung jempol (tip) secara anatomis selalu lebih jauh dari semua titik
+ *     referensi (wrist, indexMcp, dll) bahkan saat ditekuk, karena jempol
+ *     punya panjang sendiri yang menjulur dari sisi telapak.
+ *
+ * Solusi: cek ARAH vektor dari thumbMcp (2) → thumbTip (4).
+ *   - Jempol terangkat → vektor mengarah ke ATAS (dy negatif karena Y bertambah ke bawah)
+ *     DAN cukup vertikal (komponen atas ≥ 80% dari komponen samping)
+ *   - Jempol ditekuk ke samping → vektor hampir horizontal (|dx| dominan, |dy| kecil)
+ *   - Jempol ditekuk ke bawah → dy positif → langsung gugur
+ *
+ * Tidak memerlukan data handedness (berlaku untuk tangan kiri & kanan).
+ * Tidak sensitif terhadap posisi tangan di frame.
+ *
+ * Contoh:
+ *   Gesture "1" (telunjuk naik, jempol ke samping) → dy kecil, |dx| besar → TIDAK terhitung ✓
+ *   Gesture "5" (semua naik, jempol diagonal ~45°+) → |dy| cukup besar → TERHITUNG ✓
+ *   Thumbs up → dy sangat negatif → TERHITUNG ✓
+ */
+function isThumbExtended(landmarks: NormalizedLandmark[]): boolean {
+  const thumbMcp = landmarks[2]; // pangkal jempol
+  const thumbTip = landmarks[4]; // ujung jempol
 
-  // Jempol dicek pakai jarak juga, tapi threshold sedikit
-  // lebih longgar karena gerak jempol lebih ke samping
-  return distance(thumbTip, wrist) > distance(thumbMcp, wrist) * 1.1;
+  // Vektor dari pangkal jempol (MCP) ke ujung jempol (Tip)
+  // dy negatif = mengarah ke atas layar (karena Y bertambah ke bawah di MediaPipe)
+  const dy = thumbTip.y - thumbMcp.y;
+  const dx = thumbTip.x - thumbMcp.x;
+
+  // Jempol dianggap terangkat jika:
+  // 1. Ujung jempol berada DI ATAS pangkal jempol (dy < 0)
+  // 2. Komponen vertikal (ke atas) minimal 80% dari komponen horizontal (ke samping)
+  //    → sudut minimal ~39° dari horizontal, menghindari deteksi palsu saat jempol miring ke samping
+  return dy < 0 && (-dy) > Math.abs(dx) * 0.8;
 }
 
 /**
  * Menghitung jumlah jari yang terbuka (extended) pada satu tangan.
- * landmarks: array 21 titik dari HandLandmarkerResult.landmarks[i]
+ *
+ * @param landmarks - array 21 titik dari HandLandmarkerResult.landmarks[i]
  */
-export function countExtendedFingers(landmarks: NormalizedLandmark[]): number {
+export function countExtendedFingers(
+  landmarks: NormalizedLandmark[]
+): number {
   if (!landmarks || landmarks.length < 21) return 0;
 
   let count = 0;
 
-  if (isThumbExtended(landmarks)) count += 1;
-  if (isFingerExtended(landmarks, 8, 6)) count += 1; // telunjuk
+  if (isThumbExtended(landmarks))          count += 1; // jempol
+  if (isFingerExtended(landmarks, 8,  6))  count += 1; // telunjuk
   if (isFingerExtended(landmarks, 12, 10)) count += 1; // tengah
   if (isFingerExtended(landmarks, 16, 14)) count += 1; // manis
   if (isFingerExtended(landmarks, 20, 18)) count += 1; // kelingking
