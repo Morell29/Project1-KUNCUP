@@ -89,7 +89,7 @@ function VideoModal({
 
         {/* Preview / player */}
         <div
-          className={["relative flex items-center justify-center", fullscreen ? "h-3/5" : "aspect-video"].join(" ")}
+          className={["relative flex items-center justify-center", fullscreen ? "h-full" : "aspect-video"].join(" ")}
           style={{ backgroundColor: cat.color }}
         >
           <div className="absolute right-0 top-0 h-24 w-24 rounded-bl-full opacity-35" style={{ backgroundColor: cat.accent }} />
