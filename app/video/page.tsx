@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import PageDecorSimple from "@/components/PageDecorSimple";
+import { addXP, XP_REWARD } from "@/lib/xp";
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 type Video = {
@@ -173,11 +174,13 @@ export default function VideoPage() {
   function checkAnswer(opt: string) {
     if (!selectedVideo) return;
     setQuizAnswer(opt);
-    setFeedback(
-      opt === selectedVideo.answer
-        ? "Benar! Anak memahami isi video dengan baik 🎉"
-        : `Belum tepat. Jawaban yang benar adalah "${selectedVideo.answer}".`
-    );
+    if (opt === selectedVideo.answer) {
+      addXP("video_correct", XP_REWARD.video_correct, `Video: ${selectedVideo.title}`);
+      setFeedback(`Benar! Anak memahami isi video dengan baik 🎉  +${XP_REWARD.video_correct} XP`);
+    } else {
+      addXP("video_wrong", XP_REWARD.video_wrong, `Video: ${selectedVideo.title}`);
+      setFeedback(`Belum tepat. Jawaban yang benar adalah "${selectedVideo.answer}".  +${XP_REWARD.video_wrong} XP`);
+    }
   }
 
   return (

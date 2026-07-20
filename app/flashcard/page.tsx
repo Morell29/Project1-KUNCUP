@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import PageDecorSimple from "@/components/PageDecorSimple";
+import { addXP, XP_REWARD } from "@/lib/xp";
 
 export default function FlashcardPage() {
   const cards = [
@@ -94,10 +95,12 @@ export default function FlashcardPage() {
     setTotalQuestion((prev) => prev + 1);
 
     if (answer === currentCard.title) {
-      setFeedback("Benar! Hebat sekali 🎉");
+      addXP("flashcard", XP_REWARD.flashcard_correct, `Flashcard: ${currentCard.title}`);
+      setFeedback(`Benar! Hebat sekali 🎉  +${XP_REWARD.flashcard_correct} XP`);
       setScore((prev) => prev + 1);
     } else {
-      setFeedback(`Belum tepat. Jawabannya adalah ${currentCard.title}.`);
+      addXP("flashcard", XP_REWARD.flashcard_wrong, `Flashcard: ${currentCard.title}`);
+      setFeedback(`Belum tepat. Jawabannya adalah ${currentCard.title}.  +${XP_REWARD.flashcard_wrong} XP`);
     }
   }
 

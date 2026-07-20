@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import Link from "next/link";
 import PageDecorSimple from "@/components/PageDecorSimple";
 import CameraPreview, { type AssessmentTaskId } from "@/components/CameraPreview";
+import { addXP, XP_REWARD } from "@/lib/xp";
 
 // ─── Konfigurasi instruksi ────────────────────────────────────────────────────
 const TASKS = [
@@ -90,16 +91,18 @@ export default function AssessmentPage() {
 
       if (fingerStep >= 10) {
         // Semua angka 1–10 terkonfirmasi
+        addXP("assessment", XP_REWARD.assessment_task, "Assessment: Hitung dengan Jari");
         advanceTask({
           taskId: "countFingers",
           status: "success",
           fingersDone: 10,
         });
       } else {
-        // Lanjut ke angka berikutnya
+        // Lanjut ke angka berikutnya (XP saat selesai semua)
         setFingerStep((s) => s + 1);
       }
     } else {
+      addXP("assessment", XP_REWARD.assessment_task, `Assessment: ${currentTask.title}`);
       advanceTask({ taskId: currentTask.id, status: "success" });
     }
   }, [isCountingFingers, fingerStep, confirmedFingers, currentTask, advanceTask]);
