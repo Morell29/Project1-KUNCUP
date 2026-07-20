@@ -1,7 +1,64 @@
-import Link from "next/link";
-import PageOrnaments from "@/components/PageOrnaments";
+"use client";
 
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import PageOrnaments from "@/components/PageOrnaments";
+import { readXP, getLevelProgress, type XPState } from "@/lib/xp";
+
+// ─── Countdown 1 jam (decoy) ──────────────────────────────────────────────────
+function useCountdown(totalSeconds = 3600) {
+  const [remaining, setRemaining] = useState(totalSeconds);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setRemaining((s) => (s <= 1 ? totalSeconds : s - 1));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [totalSeconds]);
+
+  const m = String(Math.floor(remaining / 60)).padStart(2, "0");
+  const s = String(remaining % 60).padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+// ─── Hitung aktivitas hari ini dari riwayat XP ────────────────────────────────
+function todayActivityCount(xp: XPState | null): number {
+  if (!xp) return 0;
+  const today = new Date().toDateString();
+  const seen  = new Set<string>();
+  for (const h of xp.history) {
+    if (new Date(h.timestamp).toDateString() === today) seen.add(h.label);
+  }
+  return Math.min(5, seen.size);
+}
+
+// ─── Rata-rata kesiapan dari aspek XP ────────────────────────────────────────
+function overallReadiness(xp: XPState | null): number {
+  if (!xp || xp.total === 0) return 0;
+  const max = 300;
+  const avg = Object.values(xp.aspects).reduce((s, v) => s + v, 0) / 4;
+  return Math.min(100, Math.round((avg / max) * 100));
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
+  const countdown  = useCountdown(3600);
+  const [xp, setXP] = useState<XPState | null>(null);
+
+  // Baca XP dari localStorage dan subscribe ke update
+  useEffect(() => {
+    setXP(readXP());
+    function onUpdate(e: Event) {
+      setXP((e as CustomEvent<XPState>).detail);
+    }
+    window.addEventListener("xp-update", onUpdate);
+    return () => window.removeEventListener("xp-update", onUpdate);
+  }, []);
+
+  const { level, pct } = getLevelProgress(xp?.total ?? 0);
+  const activityCount  = todayActivityCount(xp);
+  const readinessPct   = overallReadiness(xp);
+
   const features = [
     {
       title: "AI Assessment",
@@ -45,35 +102,15 @@ export default function DashboardPage() {
     },
   ];
 
-  const stats = [
-    {
-      label: "Progress Hari Ini",
-      value: "3/5 Aktivitas",
-      detail: "Sebagian aktivitas harian selesai",
-      icon: "✅",
-      bg: "#88B04B",
-    },
-    {
-      label: "Batas Penggunaan",
-      value: "12 Menit",
-      detail: "Sisa waktu belajar hari ini",
-      icon: "⏳",
-      bg: "#E9C46A",
-    },
-  ];
-
   return (
     <main className="relative min-h-screen overflow-hidden bg-[var(--kuncup-bg)] px-6 py-6 text-[var(--forest-navy)]">
-      {/* Animated background ornaments — sama seperti landing page */}
       <PageOrnaments />
 
       <section className="relative z-10 mx-auto max-w-6xl">
         {/* ── Header ── */}
         <div className="mb-5 flex items-center justify-between">
           <div>
-            <p className="text-sm font-bold text-[var(--forest-teal)]">
-              Dashboard Orang Tua
-            </p>
+            <p className="text-sm font-bold text-[var(--forest-teal)]">Dashboard Orang Tua</p>
             <h1 className="mt-1 text-3xl font-extrabold md:text-4xl">
               Halo, Bunda Mpruy 👋
             </h1>
@@ -81,7 +118,6 @@ export default function DashboardPage() {
               Pantau aktivitas belajar dan kesiapan sekolah Aira hari ini.
             </p>
           </div>
-
           <Link
             href="/"
             className="rounded-full border border-[var(--forest-teal)] px-5 py-2 text-sm font-bold text-[var(--forest-teal)] transition hover:bg-[var(--forest-teal)] hover:text-white"
@@ -92,11 +128,14 @@ export default function DashboardPage() {
 
         {/* ── Stat cards ── */}
         <div className="grid gap-4 lg:grid-cols-4">
-          {/* Profil anak */}
+          {/* Profil anak — level dari XP */}
           <div className="rounded-2xl bg-white/80 p-4 shadow-sm ring-1 ring-white/60 backdrop-blur-sm">
             <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#2A9D8F]/15 text-2xl">
-                🌱
+              <div
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-2xl"
+                style={{ backgroundColor: level.bg }}
+              >
+                {level.emoji}
               </div>
               <div>
                 <p className="text-sm text-[var(--forest-navy)]/65">Profil Anak</p>
@@ -104,42 +143,70 @@ export default function DashboardPage() {
                 <p className="text-sm text-[var(--forest-navy)]/65">Usia 4 tahun</p>
               </div>
             </div>
-            <div className="mt-3 rounded-xl bg-[#2A9D8F]/10 px-3 py-2">
-              <p className="text-sm font-bold text-[var(--forest-teal)]">
-                Level: Kuncup Ceria
+            <div className="mt-3 rounded-xl px-3 py-2" style={{ backgroundColor: `${level.color}22` }}>
+              <p className="text-sm font-bold" style={{ color: level.color }}>
+                {level.emoji} Level: {level.name}
+              </p>
+              {/* Mini XP progress */}
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-black/10">
+                <div
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{ width: `${pct}%`, backgroundColor: level.color }}
+                />
+              </div>
+              <p className="mt-0.5 text-right text-[10px] text-[var(--forest-navy)]/50">
+                {xp?.total ?? 0} XP · {pct}%
               </p>
             </div>
           </div>
 
-          {/* Progress & waktu */}
-          {stats.map((item) => (
-            <div
-              key={item.label}
-              className="flex items-center gap-4 rounded-2xl bg-white/80 p-4 shadow-sm ring-1 ring-white/60 backdrop-blur-sm"
-            >
-              <div
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-2xl"
-                style={{ backgroundColor: item.bg }}
-              >
-                {item.icon}
-              </div>
-              <div>
-                <p className="text-sm text-[var(--forest-navy)]/65">{item.label}</p>
-                <h2 className="text-xl font-extrabold">{item.value}</h2>
-                <p className="text-sm text-[var(--forest-navy)]/65">{item.detail}</p>
-              </div>
+          {/* Progress harian — dari riwayat XP hari ini */}
+          <div className="flex items-center gap-4 rounded-2xl bg-white/80 p-4 shadow-sm ring-1 ring-white/60 backdrop-blur-sm">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#88B04B] text-2xl">
+              ✅
             </div>
-          ))}
+            <div>
+              <p className="text-sm text-[var(--forest-navy)]/65">Progress Hari Ini</p>
+              <h2 className="text-xl font-extrabold">{activityCount}/5 Aktivitas</h2>
+              <p className="text-sm text-[var(--forest-navy)]/65">
+                {activityCount === 0
+                  ? "Belum ada aktivitas hari ini"
+                  : activityCount >= 5
+                  ? "Target harian tercapai! 🎉"
+                  : `${5 - activityCount} lagi untuk target harian`}
+              </p>
+            </div>
+          </div>
 
-          {/* Report card */}
+          {/* Countdown batas penggunaan */}
+          <div className="flex items-center gap-4 rounded-2xl bg-white/80 p-4 shadow-sm ring-1 ring-white/60 backdrop-blur-sm">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#E9C46A] text-2xl">
+              ⏳
+            </div>
+            <div>
+              <p className="text-sm text-[var(--forest-navy)]/65">Batas Penggunaan</p>
+              <h2 className="font-mono text-xl font-extrabold tracking-widest">
+                {countdown}
+              </h2>
+              <p className="text-sm text-[var(--forest-navy)]/65">Sisa waktu hari ini</p>
+            </div>
+          </div>
+
+          {/* Report — kesiapan dinamis */}
           <Link
             href="/report"
             className="rounded-2xl bg-[var(--forest-teal)] p-4 text-white shadow-sm transition hover:-translate-y-1 hover:bg-[var(--forest-navy)] hover:shadow-md"
           >
             <p className="text-sm text-white/80">Ringkasan Report</p>
-            <h2 className="mt-1 text-xl font-extrabold">Kesiapan 79%</h2>
+            <h2 className="mt-1 text-xl font-extrabold">
+              Kesiapan {readinessPct}%
+            </h2>
             <p className="mt-1 text-sm text-white/80">
-              Motorik dan pendengaran berkembang baik.
+              {readinessPct === 0
+                ? "Mulai aktivitas untuk melihat perkembangan."
+                : readinessPct < 50
+                ? "Terus semangat melatih si kecil!"
+                : "Perkembangan yang baik, lanjutkan!"}
             </p>
             <p className="mt-3 text-sm font-bold">Lihat Detail →</p>
           </Link>
@@ -147,16 +214,16 @@ export default function DashboardPage() {
 
         {/* ── Rekomendasi ── */}
         <div className="mt-5 rounded-2xl bg-[var(--forest-sand)]/90 p-5 shadow-sm ring-1 ring-[var(--forest-sand)]">
-          <p className="text-sm font-bold text-[var(--forest-navy)]/70">
-            Rekomendasi Hari Ini
-          </p>
+          <p className="text-sm font-bold text-[var(--forest-navy)]/70">Rekomendasi Hari Ini</p>
           <h2 className="mt-1 text-xl font-extrabold">
-            Latihan mengenal anggota tubuh
+            {xp?.total === 0 || !xp
+              ? "Mulai aktivitas pertama bersama Aira!"
+              : "Latihan mengenal anggota tubuh"}
           </h2>
           <p className="mt-1 max-w-4xl text-sm leading-relaxed text-[var(--forest-navy)]/75">
-            Ajak anak mengikuti instruksi sederhana seperti menunjuk hidung,
-            memegang telinga, dan mengangkat tangan untuk melatih pemahaman
-            instruksi serta koordinasi gerak.
+            {xp?.total === 0 || !xp
+              ? "Coba mulai dengan AI Assessment atau Flashcard. Setiap aktivitas yang diselesaikan akan memberikan XP dan meningkatkan level Aira."
+              : "Ajak anak mengikuti instruksi sederhana seperti menunjuk hidung, memegang telinga, dan mengangkat tangan untuk melatih pemahaman instruksi serta koordinasi gerak."}
           </p>
         </div>
 
@@ -176,12 +243,10 @@ export default function DashboardPage() {
               className="group relative overflow-hidden rounded-2xl p-5 shadow-sm ring-1 ring-black/5 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-lg"
               style={{ backgroundColor: feature.bg, color: feature.text }}
             >
-              {/* Accent corner */}
               <div
                 className="absolute right-0 top-0 h-24 w-24 rounded-bl-full opacity-80 transition-transform duration-300 group-hover:scale-110"
                 style={{ backgroundColor: feature.accent }}
               />
-              {/* Shine sweep on hover */}
               <div className="absolute inset-0 -translate-x-full rounded-2xl bg-white/10 transition-transform duration-500 group-hover:translate-x-full" />
 
               <div className="relative z-10">
